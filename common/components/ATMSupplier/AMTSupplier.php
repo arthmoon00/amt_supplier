@@ -12,10 +12,6 @@ use GuzzleHttp\Exception\GuzzleException;
 use GuzzleHttp\HandlerStack;
 use JsonMapper_Exception;
 use Psr\Http\Message\ResponseInterface;
-use yii\base\Event;
-use yii\web\Response;
-
-use yii\db\Connection;
 
 class AMTSupplier extends \yii\base\Component
 {
