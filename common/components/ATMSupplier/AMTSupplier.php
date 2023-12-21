@@ -190,7 +190,10 @@ class AMTSupplier extends \yii\base\Component
     private function addArticle(
         string $articleNumber,
         int $brandId,
-        int $quantity
+        int $quantity,
+        int $stockType,
+        int $stockCode,
+        int $deliveryCode
     ): ?BooleanServiceResponse
     {
         $response = $this->doRequest('POST', self::ADD_ARTICLE_TO_ORDER_URL, [
@@ -201,9 +204,9 @@ class AMTSupplier extends \yii\base\Component
             'query' => [
                 'articleNumber' => $articleNumber,
                 'brandId' => $brandId,
-                'stockType' => $this->stockType,
-                'stockCode' => $this->stockCode,
-                'deliveryCode' => $this->deliveryCode,
+                'stockType' => $stockType,
+                'stockCode' => $stockCode,
+                'deliveryCode' => $deliveryCode,
                 'quantity' => $quantity,
                 'agreementId' => $this->agreementId,
             ]
@@ -223,10 +226,13 @@ class AMTSupplier extends \yii\base\Component
     private function removeArticle(
         string $articleNumber,
         int $brandId,
-        int $quantity
+        int $quantity,
+        int $stockType,
+        int $stockCode,
+        int $deliveryCode
     ): ?BooleanServiceResponse
     {
-        $response = $this->doRequest('POST', self::REMOVE_ARTICLE_FROM_ORDER_URL, [
+        $response = $this->doRequest('DELETE', self::REMOVE_ARTICLE_FROM_ORDER_URL, [
             'headers' => [
                 'Accept' => 'application/json',
                 'Authorization' => 'Bearer ' . $this->token
@@ -234,9 +240,9 @@ class AMTSupplier extends \yii\base\Component
             'query' => [
                 'articleNumber' => $articleNumber,
                 'brandId' => $brandId,
-                'stockType' => $this->stockType,
-                'stockCode' => $this->stockCode,
-                'deliveryCode' => $this->deliveryCode,
+                'stockType' => $stockType,
+                'stockCode' => $stockCode,
+                'deliveryCode' => $deliveryCode,
                 'quantity' => $quantity,
                 'agreementId' => $this->agreementId,
             ]
@@ -251,8 +257,8 @@ class AMTSupplier extends \yii\base\Component
     }
     private function sendOrder() {}
     private function sendOrderWithAddress() {}
-    private function searchArticle() {}
-    public function createOrder(): string
+    private function searchArticle(string $articleId) {}
+    public function createOrder(array $toOrder): string
     {
 
     }
