@@ -1,15 +1,14 @@
-<?php declare(strict_types=1);
+<?php
 
 namespace common\components\ATMSupplier;
 
 use common\components\ATMSupplier\schemas\BooleanServiceResponse;
-use common\components\ATMSupplier\schemas\DeliveryAddress;
+use common\components\ATMSupplier\schemas\OfferListServiceResponse;
 use common\components\ATMSupplier\schemas\OrderLineListServiceResponse;
 use common\components\ATMSupplier\schemas\PartnerAgreement;
 use common\components\ATMSupplier\schemas\TokenResponse;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
-use GuzzleHttp\HandlerStack;
 use JsonMapper_Exception;
 use Psr\Http\Message\ResponseInterface;
 
@@ -17,6 +16,9 @@ class AMTSupplier extends \yii\base\Component
 {
     const EVENT_UNAUTHORIZED = 'unauthorized';
     const EVENT_BAD_REQUEST = 'badRequest';
+    const EVENT_ADD_ARTICLE_FAIL = 'addArticleFail';
+    const EVENT_ORDER_SUCCESS = 'orderSuccess';
+    const EVENT_ORDER_FAIL = 'orderFail';
 
     const HTTP_STATUS_SUCCESS = 200;
 
@@ -30,18 +32,24 @@ class AMTSupplier extends \yii\base\Component
     const SEND_ORDER_WITH_ADDRESS_URL = 'Order/SendOrderWithAddress';
     const SEARCH_ARTICLE_URL = 'Parts/Search';
 
+    const ERROR_PRICE = 'Too expensive';
+    const ERROR_NOT_FOUND = 'Not found';
+    const ERROR_ANALOGS = 'Analogs';
+    const ERROR_QUANTITY = 'Quantity error';
+    const ERROR_ADD_ARTICLE = 'Add article error';
+
     private Client $client;
 
     private \JsonMapper $jsonMapper;
     private string $email;
     private string $password;
-    private string $token;
+    private string $token = '';
     public int $agreementId = 1;
 
-    public string $language = 'EN';
-    public int $stockType;
-    public int $stockCode;
-    public int $deliveryCode;
+    public string $language = 'en_US';
+    public bool $withAddress = false;
+    public array $deliveryAddress = [];
+    public int $desiredShippingDays = 14;
 
     public function __construct($config = [])
     {
@@ -52,12 +60,9 @@ class AMTSupplier extends \yii\base\Component
 
         $this->client = new Client([
             'base_uri' => self::BASE_URL,
-            'connect_timeout' => 10.0,
-            'max_retry_attempts' => 2,
-            'on_retry_callback' => function () {
-                echo 123;
-            }
+            'connect_timeout' => 10.0
         ]);
+
         $this->jsonMapper = new \JsonMapper();
 
         $this->updateToken();
@@ -162,7 +167,7 @@ class AMTSupplier extends \yii\base\Component
     /**
      * @throws JsonMapper_Exception
      */
-    private function viewCurrentOrder(): ?OrderLineListServiceResponse
+    public function viewCurrentOrder(): ?OrderLineListServiceResponse
     {
         $response = $this->doRequest('GET', self::VIEW_CURRENT_ORDER_URL, [
             'headers' => [
@@ -255,11 +260,189 @@ class AMTSupplier extends \yii\base\Component
 
         return null;
     }
-    private function sendOrder() {}
-    private function sendOrderWithAddress() {}
-    private function searchArticle(string $articleId) {}
-    public function createOrder(array $toOrder): string
-    {
 
+    /**
+     * @throws JsonMapper_Exception
+     */
+    private function sendOrder(string $incomingNumber, string $note): ?BooleanServiceResponse
+    {
+        $response = $this->doRequest('POST', self::SEND_ORDER_URL, [
+            'headers' => [
+                'Accept' => 'application/json',
+                'Authorization' => 'Bearer ' . $this->token
+            ],
+            'query' => [
+                'agreementId' => $this->agreementId,
+                'incomingNumber' => $incomingNumber,
+                'note' => $note,
+                'language' => $this->language,
+            ]
+        ]);
+
+        if ($response->getStatusCode() === self::HTTP_STATUS_SUCCESS) {
+            $json = json_decode((string) $response->getBody());
+            return $this->jsonMapper->map($json, new BooleanServiceResponse());
+        }
+
+        return null;
+    }
+
+    /**
+     * @throws JsonMapper_Exception
+     */
+    private function sendOrderWithAddress(
+        string $incomingNumber,
+        string $note,
+        int $deliveryId,
+        string $desiredShippingDate
+    ): ?BooleanServiceResponse
+    {
+        $response = $this->doRequest('POST', self::SEND_ORDER_WITH_ADDRESS_URL, [
+            'headers' => [
+                'Accept' => 'application/json',
+                'Authorization' => 'Bearer ' . $this->token
+            ],
+            'query' => [
+                'agreementId' => $this->agreementId,
+                'incomingNumber' => $incomingNumber,
+                'note' => $note,
+                'language' => $this->language,
+                'deliveryId' => $deliveryId,
+                'desiredShippingDate' => $desiredShippingDate
+            ],
+            'json' => json_encode($this->deliveryAddress)
+        ]);
+
+        if ($response->getStatusCode() === self::HTTP_STATUS_SUCCESS) {
+            $json = json_decode((string) $response->getBody());
+            return $this->jsonMapper->map($json, new BooleanServiceResponse());
+        }
+
+        return null;
+    }
+
+    /**
+     * @throws JsonMapper_Exception
+     */
+    private function searchArticle(
+        string $articleId,
+        string $brand
+    ): ?OfferListServiceResponse
+    {
+        $response = $this->doRequest('GET', self::SEARCH_ARTICLE_URL, [
+            'headers' => [
+                'Accept' => 'application/json',
+                'Authorization' => 'Bearer ' . $this->token
+            ],
+            'query' => [
+                'articleNumber' => $articleId,
+                'brand' => $brand,
+                'agreementId' => $this->agreementId,
+                'language' => $this->language,
+                'showAnalogs' => true
+            ]
+        ]);
+
+        if ($response->getStatusCode() === self::HTTP_STATUS_SUCCESS) {
+            $json = json_decode((string) $response->getBody());
+            return $this->jsonMapper->map($json, new OfferListServiceResponse());
+        }
+
+        return null;
+    }
+
+    /**
+     * @throws JsonMapper_Exception
+     */
+    public function createOrder(
+        $incomingNumber,
+        $note,
+        array $toOrder
+    ): ?array
+    {
+        $parts = $toOrder;
+
+        foreach ($parts as &$part) {
+            $offerList = $this->searchArticle($part['oem'], $part['brand'], true);
+
+            if ($offerList->success) {
+                $original = null;
+                $analogs = [];
+
+                foreach ($offerList->data as $offer) {
+                    if ($offer->product->article === $part['oem']) {
+                        $original = $offer;
+                    } else {
+                        $analogs[] = $offer;
+                    }
+                }
+
+                if ($original === null) {
+                    if (empty($analogs)) {
+                        $part['error'] = self::ERROR_NOT_FOUND . " ({$original->price})";
+                    } else {
+                        $errorMsg = [];
+                        foreach ($analogs as $analog) {
+                            $errorMsg[] = "{$analog->product->article}[{$analog->price}]";
+                        }
+                        $errorMsg = implode(',', $errorMsg);
+
+                        $part['error'] = self::ERROR_ANALOGS . " ({$errorMsg})";
+                        $part['ordered'] = 0;
+                    }
+                } elseif ($original->price > $part['price']) {
+                    $part['error'] = self::ERROR_PRICE . " ({$original->price})";
+                    $part['ordered'] = 0;
+                } elseif ($original->availability < $part['quantity']) {
+                    $part['error'] = self::ERROR_QUANTITY . " ({$original->availability})";
+                    $part['ordered'] = 0;
+                } else {
+                    $response = $this->addArticle(
+                        $part['oem'],
+                        $part['brand'],
+                        $part['quantity'],
+                        $original->stockType,
+                        $original->stockCode,
+                        $original->deliveryCode
+                    );
+
+                    if (!$response) {
+                        $part['ordered'] = 0;
+                        $part['error'] = self::ERROR_ADD_ARTICLE;
+
+                        self::trigger(self::EVENT_ADD_ARTICLE_FAIL);
+                    } elseif ($response->success) {
+                        $part['ordered'] = $part['quantity'];
+                        $part['error'] = null;
+                    } else {
+                        $part['ordered'] = 0;
+                        $part['error'] = $response->message;
+                    }
+                }
+            }
+        }
+
+        if ($this->withAddress) {
+            $orderResult = $this->sendOrder($incomingNumber, $note);
+        } else {
+            $desiredShippingDate = new \DateTimeImmutable('now');
+            $desiredShippingDate->add(new \DateInterval("P{$this->desiredShippingDays}D"));
+
+            $orderResult = $this->sendOrderWithAddress(
+                $incomingNumber,
+                $note,
+                rand(0,99999), // TODO: ???
+                $desiredShippingDate->format(\DateTimeInterface::RFC3339_EXTENDED)
+            );
+        }
+
+
+        if ($orderResult->success) {
+            self::trigger(self::EVENT_ORDER_SUCCESS);
+            return $parts;
+        } else {
+            self::trigger(self::EVENT_ORDER_FAIL);
+            return null;
+        }
     }
 }
