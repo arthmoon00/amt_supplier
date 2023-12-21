@@ -393,14 +393,19 @@ class AMTSupplier extends \yii\base\Component
                 } elseif ($original->price > $part['price']) {
                     $part['error'] = self::ERROR_PRICE . " ({$original->price})";
                     $part['ordered'] = 0;
-                } elseif ($original->availability < $part['quantity']) {
-                    $part['error'] = self::ERROR_QUANTITY . " ({$original->availability})";
-                    $part['ordered'] = 0;
                 } else {
+                    $ordered = $part['quantity'];
+                    if ($original->availability < $part['quantity']) {
+                        $part['error'] = self::ERROR_QUANTITY . " ({$original->availability})";
+                        $ordered = $original->availability;
+                    } else {
+                        $part['error'] = null;
+                    }
+
                     $response = $this->addArticle(
                         $part['oem'],
                         $part['brand'],
-                        $part['quantity'],
+                        $ordered,
                         $original->stockType,
                         $original->stockCode,
                         $original->deliveryCode
@@ -412,7 +417,7 @@ class AMTSupplier extends \yii\base\Component
 
                         self::trigger(self::EVENT_ADD_ARTICLE_FAIL);
                     } elseif ($response->success) {
-                        $part['ordered'] = $part['quantity'];
+                        $part['ordered'] = $ordered;
                         $part['error'] = null;
                     } else {
                         $part['ordered'] = 0;
