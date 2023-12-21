@@ -41,6 +41,7 @@ class AMTSupplier extends \yii\base\Component
     private Client $client;
 
     private \JsonMapper $jsonMapper;
+
     private string $email;
     private string $password;
     private string $token = '';
@@ -55,8 +56,6 @@ class AMTSupplier extends \yii\base\Component
     {
         $this->email = $config['email'];
         $this->password = $config['password'];
-        $this->agreementId = $config['agreementId'];
-        $this->language = $config['language'];
 
         $this->client = new Client([
             'base_uri' => self::BASE_URL,
@@ -81,7 +80,7 @@ class AMTSupplier extends \yii\base\Component
         }
     }
 
-    public function auth(): void
+    private function auth(): void
     {
         try {
             $response = $this->client->post(self::AUTH_URL, [
@@ -119,7 +118,7 @@ class AMTSupplier extends \yii\base\Component
         }
     }
 
-    public function doRequest(string $method, string $url, array $options): ?ResponseInterface
+    private function doRequest(string $method, string $url, array $options): ?ResponseInterface
     {
         $i = 0;
         $statusCode = null;
