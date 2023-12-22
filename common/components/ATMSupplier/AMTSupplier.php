@@ -38,19 +38,19 @@ class AMTSupplier extends \yii\base\Component
     const ERROR_QUANTITY = 'Quantity error';
     const ERROR_ADD_ARTICLE = 'Add article error';
 
-    private Client $client;
+    private $client;
 
-    private \JsonMapper $jsonMapper;
+    private $jsonMapper;
 
-    private string $email;
-    private string $password;
-    private string $token = '';
-    public int $agreementId = 1;
+    private $email;
+    private $password;
+    private $token = '';
+    public $agreementId = 1;
 
-    public string $language = 'en_US';
-    public bool $withAddress = false;
-    public array $deliveryAddress = [];
-    public int $desiredShippingDays = 14;
+    public $language = 'en_US';
+    public $withAddress = true;
+    public $deliveryAddress = [];
+    public $desiredShippingDays = 14;
 
     public function __construct($config = [])
     {
@@ -71,16 +71,23 @@ class AMTSupplier extends \yii\base\Component
 
         parent::__construct($config);
     }
-    private function updateToken(): void
+
+    /**
+     * @return void
+     */
+    private function updateToken()
     {
-        if (\Yii::$app->cache->exists(self::class . '::token')) {
-            $this->token = \Yii::$app->cache->get(self::class . '::token');
+        if (\Yii::$app->cache->exists(get_class($this) . '::token')) {
+            $this->token = \Yii::$app->cache->get(get_class($this) . '::token');
         } else {
             $this->auth();
         }
     }
 
-    private function auth(): void
+    /**
+     * @return void
+     */
+    private function auth()
     {
         try {
             $response = $this->client->post(self::AUTH_URL, [
@@ -93,19 +100,20 @@ class AMTSupplier extends \yii\base\Component
 
             if ($response->getStatusCode() === self::HTTP_STATUS_SUCCESS) {
                 $json = json_decode((string) $response->getBody());
+
                 /** @var TokenResponse $tokenResponse */
                 $tokenResponse = $this->jsonMapper->map($json, new TokenResponse());
 
                 if ($tokenResponse->token !== '') {
                     $this->token = $tokenResponse->token;
-                    $tokenValidTo = \DateTimeImmutable::createFromFormat(
-                        \DateTimeInterface::RFC3339_EXTENDED ,
+                    $tokenValidTo = \DateTime::createFromFormat(
+                        \DateTime::RFC3339_EXTENDED ,
                         $tokenResponse->validTo
                     );
-                    $now = new \DateTimeImmutable('now', $tokenValidTo->getTimezone());
+                    $now = new \DateTime('now', $tokenValidTo->getTimezone());
                     $duration = $tokenValidTo->format('U') - $now->format('U');
 
-                    \Yii::$app->cache->set(self::class . '::token', $this->token, $duration);
+                    \Yii::$app->cache->set(get_class($this) . '::token', $this->token, $duration);
                 } else {
                     self::trigger(self::EVENT_UNAUTHORIZED);
                 }
@@ -118,7 +126,13 @@ class AMTSupplier extends \yii\base\Component
         }
     }
 
-    private function doRequest(string $method, string $url, array $options): ?ResponseInterface
+    /**
+     * @param $method
+     * @param $url
+     * @param $options
+     * @return ResponseInterface|null
+     */
+    private function doRequest($method, $url, $options)
     {
         $i = 0;
         $statusCode = null;
@@ -146,7 +160,7 @@ class AMTSupplier extends \yii\base\Component
      *
      * @return PartnerAgreement[]
      */
-    public function getAllowedAgreements(): array
+    public function getAllowedAgreements()
     {
         $response = $this->doRequest('GET', self::ALLOWED_AGREEMENTS_URL, [
             'headers' => [
@@ -157,16 +171,17 @@ class AMTSupplier extends \yii\base\Component
 
         if ($response->getStatusCode() === self::HTTP_STATUS_SUCCESS) {
             $json = json_decode((string) $response->getBody());
-            return $this->jsonMapper->mapArray($json, [], PartnerAgreement::class);
+            return $this->jsonMapper->mapArray($json, [], 'PartnerAgreement');
         }
 
         return [];
     }
 
     /**
+     * @return mixed|object|string|null
      * @throws JsonMapper_Exception
      */
-    public function viewCurrentOrder(): ?OrderLineListServiceResponse
+    public function viewCurrentOrder()
     {
         $response = $this->doRequest('GET', self::VIEW_CURRENT_ORDER_URL, [
             'headers' => [
@@ -189,16 +204,23 @@ class AMTSupplier extends \yii\base\Component
     }
 
     /**
+     * @param $articleNumber
+     * @param $brandId
+     * @param $quantity
+     * @param $stockType
+     * @param $stockCode
+     * @param $deliveryCode
+     * @return mixed|object|string|null
      * @throws JsonMapper_Exception
      */
     private function addArticle(
-        string $articleNumber,
-        int $brandId,
-        int $quantity,
-        int $stockType,
-        int $stockCode,
-        int $deliveryCode
-    ): ?BooleanServiceResponse
+        $articleNumber,
+        $brandId,
+        $quantity,
+        $stockType,
+        $stockCode,
+        $deliveryCode
+    )
     {
         $response = $this->doRequest('POST', self::ADD_ARTICLE_TO_ORDER_URL, [
             'headers' => [
@@ -225,16 +247,23 @@ class AMTSupplier extends \yii\base\Component
     }
 
     /**
+     * @param $articleNumber
+     * @param $brandId
+     * @param $quantity
+     * @param $stockType
+     * @param $stockCode
+     * @param $deliveryCode
+     * @return mixed|object|string|null
      * @throws JsonMapper_Exception
      */
     private function removeArticle(
-        string $articleNumber,
-        int $brandId,
-        int $quantity,
-        int $stockType,
-        int $stockCode,
-        int $deliveryCode
-    ): ?BooleanServiceResponse
+        $articleNumber,
+        $brandId,
+        $quantity,
+        $stockType,
+        $stockCode,
+        $deliveryCode
+    )
     {
         $response = $this->doRequest('DELETE', self::REMOVE_ARTICLE_FROM_ORDER_URL, [
             'headers' => [
@@ -261,9 +290,12 @@ class AMTSupplier extends \yii\base\Component
     }
 
     /**
+     * @param $incomingNumber
+     * @param $note
+     * @return mixed|object|string|null
      * @throws JsonMapper_Exception
      */
-    private function sendOrder(string $incomingNumber, string $note): ?BooleanServiceResponse
+    private function sendOrder($incomingNumber, $note)
     {
         $response = $this->doRequest('POST', self::SEND_ORDER_URL, [
             'headers' => [
@@ -287,14 +319,19 @@ class AMTSupplier extends \yii\base\Component
     }
 
     /**
+     * @param $incomingNumber
+     * @param $note
+     * @param $deliveryId
+     * @param $desiredShippingDate
+     * @return mixed|object|string|null
      * @throws JsonMapper_Exception
      */
     private function sendOrderWithAddress(
-        string $incomingNumber,
-        string $note,
-        int $deliveryId,
-        string $desiredShippingDate
-    ): ?BooleanServiceResponse
+        $incomingNumber,
+        $note,
+        $deliveryId,
+        $desiredShippingDate
+    )
     {
         $response = $this->doRequest('POST', self::SEND_ORDER_WITH_ADDRESS_URL, [
             'headers' => [
@@ -321,12 +358,15 @@ class AMTSupplier extends \yii\base\Component
     }
 
     /**
+     * @param $articleId
+     * @param $brand
+     * @return OfferListServiceResponse|null
      * @throws JsonMapper_Exception
      */
     private function searchArticle(
-        string $articleId,
-        string $brand
-    ): ?OfferListServiceResponse
+        $articleId,
+        $brand
+    )
     {
         $response = $this->doRequest('GET', self::SEARCH_ARTICLE_URL, [
             'headers' => [
@@ -351,13 +391,17 @@ class AMTSupplier extends \yii\base\Component
     }
 
     /**
+     * @param $incomingNumber
+     * @param $note
+     * @param array $toOrder
+     * @return array|null
      * @throws JsonMapper_Exception
      */
     public function createOrder(
         $incomingNumber,
         $note,
         array $toOrder
-    ): ?array
+    )
     {
         $parts = $toOrder;
 
@@ -429,14 +473,14 @@ class AMTSupplier extends \yii\base\Component
         if ($this->withAddress) {
             $orderResult = $this->sendOrder($incomingNumber, $note);
         } else {
-            $desiredShippingDate = new \DateTimeImmutable('now');
+            $desiredShippingDate = new \DateTime('now');
             $desiredShippingDate->add(new \DateInterval("P{$this->desiredShippingDays}D"));
 
             $orderResult = $this->sendOrderWithAddress(
                 $incomingNumber,
                 $note,
                 rand(0,99999), // TODO: ???
-                $desiredShippingDate->format(\DateTimeInterface::RFC3339_EXTENDED)
+                $desiredShippingDate->format(\DateTime::RFC3339_EXTENDED)
             );
         }
 
