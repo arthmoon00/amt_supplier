@@ -37,6 +37,7 @@ class AMTSupplier extends \yii\base\Component
     const ERROR_ANALOGS = 'Analogs';
     const ERROR_QUANTITY = 'Quantity error';
     const ERROR_ADD_ARTICLE = 'Add article error';
+    const ERROR_MIN_QUANTITY = 'Minimum quantity to order';
 
     private $client;
 
@@ -45,8 +46,9 @@ class AMTSupplier extends \yii\base\Component
     private $email;
     private $password;
     private $token = '';
-    public $agreementId = 1;
 
+    public $agreementId = 1;
+    public $currency = 'EUR';
     public $language = 'en_US';
     public $withAddress = true;
     public $deliveryAddress = [];
@@ -107,7 +109,7 @@ class AMTSupplier extends \yii\base\Component
                 if ($tokenResponse->token !== '') {
                     $this->token = $tokenResponse->token;
                     $tokenValidTo = \DateTime::createFromFormat(
-                        \DateTime::RFC3339_EXTENDED ,
+                        \DateTime::RFC3339 , // RFC3339_EXTENDED в swagger
                         $tokenResponse->validTo
                     );
                     $now = new \DateTime('now', $tokenValidTo->getTimezone());
@@ -145,6 +147,7 @@ class AMTSupplier extends \yii\base\Component
                     return $response;
                 }
             } catch (GuzzleException $exception) {
+                echo $exception->getMessage();
                 self::trigger(self::EVENT_BAD_REQUEST);
             }
 
@@ -171,7 +174,7 @@ class AMTSupplier extends \yii\base\Component
 
         if ($response->getStatusCode() === self::HTTP_STATUS_SUCCESS) {
             $json = json_decode((string) $response->getBody());
-            return $this->jsonMapper->mapArray($json, [], 'PartnerAgreement');
+            return $this->jsonMapper->mapArray($json, [], __NAMESPACE__ . '\schemas\PartnerAgreement');
         }
 
         return [];
@@ -213,7 +216,7 @@ class AMTSupplier extends \yii\base\Component
      * @return mixed|object|string|null
      * @throws JsonMapper_Exception
      */
-    private function addArticle(
+    public function addArticle(
         $articleNumber,
         $brandId,
         $quantity,
@@ -256,7 +259,7 @@ class AMTSupplier extends \yii\base\Component
      * @return mixed|object|string|null
      * @throws JsonMapper_Exception
      */
-    private function removeArticle(
+    public function removeArticle(
         $articleNumber,
         $brandId,
         $quantity,
@@ -295,7 +298,7 @@ class AMTSupplier extends \yii\base\Component
      * @return mixed|object|string|null
      * @throws JsonMapper_Exception
      */
-    private function sendOrder($incomingNumber, $note)
+    public function sendOrder($incomingNumber, $note)
     {
         $response = $this->doRequest('POST', self::SEND_ORDER_URL, [
             'headers' => [
@@ -326,7 +329,7 @@ class AMTSupplier extends \yii\base\Component
      * @return mixed|object|string|null
      * @throws JsonMapper_Exception
      */
-    private function sendOrderWithAddress(
+    public function sendOrderWithAddress(
         $incomingNumber,
         $note,
         $deliveryId,
@@ -346,7 +349,7 @@ class AMTSupplier extends \yii\base\Component
                 'deliveryId' => $deliveryId,
                 'desiredShippingDate' => $desiredShippingDate
             ],
-            'json' => json_encode($this->deliveryAddress)
+            'json' => $this->deliveryAddress
         ]);
 
         if ($response->getStatusCode() === self::HTTP_STATUS_SUCCESS) {
@@ -363,7 +366,7 @@ class AMTSupplier extends \yii\base\Component
      * @return OfferListServiceResponse|null
      * @throws JsonMapper_Exception
      */
-    private function searchArticle(
+    public function searchArticle(
         $articleId,
         $brand
     )
@@ -378,7 +381,7 @@ class AMTSupplier extends \yii\base\Component
                 'brand' => $brand,
                 'agreementId' => $this->agreementId,
                 'language' => $this->language,
-                'showAnalogs' => true
+                'showAnalogs' => 'true' // true конвертируется в 1, из-за этого ошибка 400
             ]
         ]);
 
@@ -400,7 +403,7 @@ class AMTSupplier extends \yii\base\Component
     public function createOrder(
         $incomingNumber,
         $note,
-        array $toOrder
+        $toOrder
     )
     {
         $parts = $toOrder;
@@ -436,6 +439,9 @@ class AMTSupplier extends \yii\base\Component
                 } elseif ($original->price > $part['price']) {
                     $part['error'] = self::ERROR_PRICE . " ({$original->price})";
                     $part['ordered'] = 0;
+                } elseif ($original->minimumOrder > $part['quantity']) {
+                    $part['error'] = self::ERROR_MIN_QUANTITY . " ({$original->minimumOrder})";
+                    $part['ordered'] = 0;
                 } else {
                     $ordered = $part['quantity'];
                     if ($original->availability < $part['quantity']) {
@@ -447,7 +453,7 @@ class AMTSupplier extends \yii\base\Component
 
                     $response = $this->addArticle(
                         $part['oem'],
-                        $part['brand'],
+                        $original->product->brandId,
                         $ordered,
                         $original->stockType,
                         $original->stockCode,
@@ -480,10 +486,9 @@ class AMTSupplier extends \yii\base\Component
                 $incomingNumber,
                 $note,
                 rand(0,99999), // TODO: ???
-                $desiredShippingDate->format(\DateTime::RFC3339_EXTENDED)
+                $desiredShippingDate->format(\DateTime::RFC3339)
             );
         }
-
 
         if ($orderResult->success) {
             self::trigger(self::EVENT_ORDER_SUCCESS);

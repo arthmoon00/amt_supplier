@@ -11,9 +11,10 @@ return [
         ],
         'AMTSupplier' => [
             'class' => \common\components\ATMSupplier\AMTSupplier::class,
-            'email' => 'test@mail.ru',
-            'password' => '123123',
-            'agreementId' => 1,
+            'email' => 'lk@apm.group',
+            'password' => '8798633',
+            'agreementId' => 62829,
+            'currency' => 'EUR',
             'language' => 'en_US',
             'withAddress' => true,
             'deliveryAddress' => [
