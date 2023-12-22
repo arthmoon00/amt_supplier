@@ -18,17 +18,17 @@ return [
             'language' => 'en_US',
             'withAddress' => true,
             'deliveryAddress' => [
-                "consigneeName" => "string",
-                "company" => "string",
-                "email" => "string",
-                "phone" => "string",
-                "country" => "string",
-                "zipCode" => "string",
-                "state" => "string",
-                "city" => "string",
-                "street" => "string",
-                "houseNo" => "string",
-                "roomNo" => "string"
+                "consigneeName" => "APMG Group",
+                "company" => "APMG Group",
+                "email" => "info@apm.group",
+                "phone" => "+971528727000",
+                "country" => "UAE",
+                "zipCode" => "713073",
+                "state" => "Dubai",
+                "city" => "Dubai",
+                "street" => "Dubai Logistics City",
+                "houseNo" => "V5G2+RH",
+                "roomNo" => "RH"
             ],
             'desiredShippingDays' => 14
         ]
