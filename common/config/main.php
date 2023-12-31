@@ -13,7 +13,7 @@ return [
             'class' => \common\components\ATMSupplier\AMTSupplier::class,
             'email' => 'lk@apm.group',
             'password' => '8798633',
-            'agreementId' => 62829,
+            'agreementId' => 628291,
             'currency' => 'EUR',
             'language' => 'en_US',
             'withAddress' => true,
